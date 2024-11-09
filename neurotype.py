@@ -15,13 +15,33 @@ with open('questions.json', 'r', encoding='utf-8') as f:
 # Задаем список функций
 functions = ["ЧИ", "БИ", "ЧС", "БС", "БЛ", "ЧЛ", "БЭ", "ЧЭ"]
 
+# Задаем список типов и их функции
+types_functions = {
+    "Дон Кихот": ["ЧИ", "БЛ"],
+    "Дюма": ["БС", "БЭ"],
+    "Робеспьер": ["БЛ", "ЧИ"],
+    "Гюго": ["ЧЭ", "БС"],
+    "Жуков": ["ЧС", "БЛ"],
+    "Есенин": ["БИ", "ЧЭ"],
+    "Гамлет": ["ЧЭ", "БИ"],
+    "Максим": ["БЛ", "ЧС"],
+    "Гексли": ["ЧИ", "БЭ"],
+    "Габен": ["БС", "ЧЛ"],
+    "Драйзер": ["БЭ", "ЧС"],
+    "Штирлиц": ["ЧЛ", "БС"],
+    "Бальзак": ["БИ", "ЧЛ"],
+    "Наполеон": ["ЧС", "БЭ"],
+    "Достоевский": ["БЭ", "ЧИ"],
+    "Джек Лондон": ["ЧЛ", "БИ"]
+}
+
 # Настраиваем гиперпараметры
-learning_rate = 1e-5  # Уменьшили скорость обучения
-batch_size = 8  # Уменьшили размер батча
-epochs = 5
-dropout_rate = 0.3
+learning_rate = 2e-5
+batch_size = 8
+epochs = 10
+dropout_rate = 0.2
 clipnorm = 1.0
-early_stopping_patience = 2
+early_stopping_patience = 3
 
 # Извлечение вопросов и меток
 list_of_questions = [entry['statement'] for entry in data]
@@ -49,7 +69,9 @@ def create_bert_model():
     cls_token = sequence_output[:, 0, :]  # (batch_size, hidden_size)
 
     # Добавляем плотные слои для регрессии
-    x = tf.keras.layers.Dense(256, activation='relu')(cls_token)  # Увеличили размерность слоя
+    x = tf.keras.layers.Dense(512, activation='relu')(cls_token)
+    x = tf.keras.layers.Dropout(dropout_rate)(x)
+    x = tf.keras.layers.Dense(256, activation='relu')(x)
     x = tf.keras.layers.Dropout(dropout_rate)(x)
     output = tf.keras.layers.Dense(len(functions), activation='linear')(x)
 
@@ -162,6 +184,33 @@ def predict_correlations(question):
     print("-" * 20)
     for func, corr in sorted_correlations.items():
         print("{:<5} {:<10.4f}".format(func, corr))
+
+    # Определяем типы, которые согласились бы с утверждением
+    type_scores = {}
+    base_weight = 2    # Вес базовой функции
+    creative_weight = 1  # Вес творческой функции
+
+    for type_name, type_funcs in types_functions.items():
+        base_func = type_funcs[0]
+        creative_func = type_funcs[1]
+
+        # Получаем корреляции для функций, если они отсутствуют, то считаем их равными 0
+        base_corr = correlations.get(base_func, 0)
+        creative_corr = correlations.get(creative_func, 0)
+
+        # Расчитываем суммарный балл с учетом весов
+        score = base_corr * base_weight + creative_corr * creative_weight
+        type_scores[type_name] = score
+
+    # Сортируем типы по их суммарным баллам
+    sorted_types = sorted(type_scores.items(), key=lambda item: item[1], reverse=True)
+
+    # Выводим типы, которые согласились бы с утверждением
+    top_agree_types = [type_name for type_name, score in sorted_types[:3]]
+    top_disagree_types = [type_name for type_name, score in sorted_types[-3:]]
+
+    print(f"\nСкорее всего, с утверждением согласились бы типы: {', '.join(top_agree_types)}.")
+    print(f"И не согласились бы типы: {', '.join(top_disagree_types)}.")
 
     return sorted_correlations
 
